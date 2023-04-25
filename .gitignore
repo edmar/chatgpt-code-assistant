@@ -1,0 +1,31 @@
+# .gitignore for FastAPI project
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PyTest cache
+.pytest_cache
+
+# Virtual environment
+venv/
+.env
+
+# IDE files
+.vscode/
+.idea/
+
+# Log files
+*.log
+
+# Database files
+*.db
+*.sqlite3
+
+# FastAPI specific
+uvicorn.log
+
+# Other files and directories to ignore
+.DS_Store

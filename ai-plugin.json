@@ -1,0 +1,18 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Code Assistant",
+  "name_for_model": "code_assistant",
+  "description_for_human": "Plugin that gets url contents or a local file to help you with code.",
+  "description_for_model": "Plugin to help write code. It can get the contents of a url or a local file and also write to local files.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "/openapi.json",
+    "is_user_authenticated": false
+  },
+  "logo_url": "https://updatefy.edmaroferreira.repl.co/logo.png",
+  "contact_email": "support@example.com",
+  "legal_info_url": "https://example.com/legal"
+}
