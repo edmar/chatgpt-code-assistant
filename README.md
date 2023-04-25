@@ -6,10 +6,10 @@ I also faced challenges due to ChatGPT's inability to access my local file syste
 
 To overcome these limitations, I decided to create the ChatGPT Code Assistant Plugin. By granting ChatGPT access to both my local file system and the internet, it can now effortlessly:
 
-Reference online documentation to provide accurate API calls and avoid guesswork.
-Incorporate the code from my current project as context, generating more relevant and coherent suggestions.
-Read and utilize files within my project to improve overall code integration.
-Directly write to files in my project, streamlining the coding process and eliminating the need for manual copy-pasting.
+- Reference online documentation to provide accurate API calls and avoid guesswork.
+- Incorporate the code from my current project as context, generating more relevant and coherent suggestions.
+- Read and utilize files within my project to improve overall code integration.
+- Directly write to files in my project, streamlining the coding process and eliminating the need for manual copy-pasting.
 
 Through this personal experiment, I have experienced the enhanced capabilities of the ChatGPT Code Assistant Plugin and revolutionized the way I code. I hope others can also benefit from this solution and transform their coding journeys.
 
@@ -25,7 +25,8 @@ Run the following command to start the server:
 ```bash
 uvicorn main:app --reload
 ```
-Now, use ngrok to expose the server to the internet:
+Now, use ngrok to expose the server to the internet.
+Ngrok is needed because the chatgpt plugins requires an https url to work.
 
 ```bash
 ngrok http 8000
