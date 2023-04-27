@@ -11,7 +11,17 @@ To overcome these limitations, I decided to create the ChatGPT Code Assistant Pl
 - Read and utilize files within my project to improve overall code integration.
 - Directly write to files in my project, streamlining the coding process and eliminating the need for manual copy-pasting.
 
-Through this personal experiment, I have experienced the enhanced capabilities of the ChatGPT Code Assistant Plugin and revolutionized the way I code. I hope others can also benefit from this solution and transform their coding journeys.
+## Recent Changes
+
+- Refactored `main.py` and organized code into separate modules.
+- Moved FastAPI routes to `modules/routes.py`.
+- Moved Pydantic models to `modules/models.py`.
+- Moved utility function to `modules/utils.py`.
+- Simplified `main.py` to only initialize and run FastAPI server.
+
+## Collaborators
+
+- Luciano Tonet <tonetlds@gmail.com>
 
 ## Installation
 
