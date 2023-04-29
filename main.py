@@ -1,4 +1,5 @@
 import json
+from typing import List, Dict
 from fastapi import FastAPI, Request, HTTPException, Body
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.openapi.utils import get_openapi
@@ -66,14 +67,7 @@ async def get_url_content(url: str):
 @app.get("/file")
 async def get_file_content(filepath: str):
     try:
-        file_path = Path(filepath)
-        if not file_path.is_absolute():
-            raise HTTPException(status_code=400, detail="Only absolute file paths are allowed.")
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="File not found.")
-        if not file_path.is_file():
-            raise HTTPException(status_code=400, detail="The path provided is not a file.")
-
+        file_path = validate_path(filepath)
         with file_path.open("r") as file:
             content = file.read()
         return {"content": content}
@@ -94,6 +88,48 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
         return {"status": "success", "message": "File created successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating file: {e}")
+
+
+
+@app.post("/update-file")
+async def update_file(filepath: str = Body(...), updates: List[Dict[str, str]] = Body(...)):
+    try:
+        file_path = validate_path(filepath)
+
+        # Read the existing content
+        with file_path.open("r") as file:
+            lines = file.readlines()
+
+        # Apply updates
+        for update in updates:
+            line_number = update.get("line_number")
+            new_content = update.get("new_content")
+            if line_number is not None and new_content is not None:
+                if 0 <= line_number < len(lines):
+                    lines[line_number] = new_content + "\n"
+
+        # Write the updated content back to the file
+        with file_path.open("w") as file:
+            file.writelines(lines)
+
+        return {"status": "success", "message": "File updated successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating file: {e}")
+
+
+################################################
+# UTILS
+################################################
+
+def validate_path(filepath: str) -> Path:
+    file_path = Path(filepath)
+    if not file_path.is_absolute():
+        raise HTTPException(status_code=400, detail="Only absolute file paths are allowed.")
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found.")
+    if not file_path.is_file():
+        raise HTTPException(status_code=400, detail="The path provided is not a file.")
+    return file_path
 
 
 ################################################
