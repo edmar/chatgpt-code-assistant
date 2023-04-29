@@ -3,7 +3,7 @@
   "name_for_human": "Code Assistant",
   "name_for_model": "code_assistant",
   "description_for_human": "Plugin that gets url contents or a local file to help you with code.",
-  "description_for_model": "Plugin to help write code. It can get the contents of a url or a local file and also write to local files.",
+  "description_for_model": "Plugin to help write code. It can get the contents of a url or a local file, create and write to local files, and update, insert, and delete from existing local files.",
   "auth": {
     "type": "none"
   },

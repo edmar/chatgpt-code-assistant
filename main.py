@@ -1,4 +1,5 @@
-import json
+# Welcome to the project! This is the main.py file.
+
 from typing import List, Dict
 from fastapi import FastAPI, Request, HTTPException, Body
 from fastapi.responses import FileResponse, JSONResponse
@@ -7,14 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import trafilatura
 from pathlib import Path
 from requests_html import AsyncHTMLSession
+from pydantic import BaseModel
 
 
-################################################
 # CONFIG
 ################################################
 
 app = FastAPI()
-
 LOCALHOST_PORT=5002
 
 # Add CORS for openapi domains to enable localhost plugin serving
@@ -36,9 +36,9 @@ app.add_middleware(
 # ROUTES
 ################################################
 
-@app.get("/")
+@app.get("/hello")
 async def hello_world():
-    return "hello, welcome to chatgpt Code Assistant plugin!"
+    return "hello, and welcome to chatgpt Code Assistant plugin"
 
 
 @app.get("/url")
@@ -91,8 +91,17 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
 
 
 
+class Update(BaseModel):
+    line_number: int
+    new_content: str
+
 @app.post("/update-file")
-async def update_file(filepath: str = Body(...), updates: List[Dict[str, str]] = Body(...)):
+async def update_file(filepath: str = Body(...), updates: List[Update] = Body(...)):
+    """
+    Use this end piont to update the content of a file. Language expressing adding, deleting, 
+    updating, editing, inserting, modifying, or doing these or other expressions of such actions, 
+    at specific locations in the file may be used.
+    """
     try:
         file_path = validate_path(filepath)
 
@@ -100,13 +109,25 @@ async def update_file(filepath: str = Body(...), updates: List[Dict[str, str]] =
         with file_path.open("r") as file:
             lines = file.readlines()
 
+        # Sort updates by line_number in ascending order
+        sorted_updates = sorted(updates, key=lambda x: x.line_number)
+
         # Apply updates
-        for update in updates:
-            line_number = update.get("line_number")
-            new_content = update.get("new_content")
+        line_offset = 0
+        for update in sorted_updates:
+            line_number = update.line_number
+            new_content = update.new_content
             if line_number is not None and new_content is not None:
-                if 0 <= line_number < len(lines):
-                    lines[line_number] = new_content + "\n"
+                adjusted_line_number = line_number + line_offset
+                if 0 <= adjusted_line_number < len(lines):
+                    # Split new content into lines
+                    new_lines = new_content.splitlines()
+
+                    # Insert new lines at the specified line number
+                    lines[adjusted_line_number:adjusted_line_number+1] = [new_line + "\n" for new_line in new_lines]
+
+                    # Update line_offset
+                    line_offset += len(new_lines) - 1
 
         # Write the updated content back to the file
         with file_path.open("w") as file:
@@ -174,5 +195,4 @@ async def openapi_spec(request: Request):
 if __name__ == "__main__":
     import uvicorn
     app.openapi = generate_openapi_spec
-
     uvicorn.run("main:app", host="0.0.0.0", port=LOCALHOST_PORT, reload=True)

@@ -2,3 +2,4 @@ fastapi
 uvicorn
 trafilatura
 requests-html
+pydantic
