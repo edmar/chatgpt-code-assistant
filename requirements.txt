@@ -3,3 +3,4 @@ uvicorn
 trafilatura
 requests-html
 pydantic
+fuzzywuzzy
