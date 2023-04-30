@@ -10,6 +10,7 @@ from pathlib import Path
 from requests_html import AsyncHTMLSession
 from pydantic import BaseModel, Field
 from fuzzywuzzy import fuzz
+import os
 
 
 
@@ -113,6 +114,11 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
         return {"status": "success", "message": "File created successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating file: {e}")
+
+
+
+
+
 
 # -------------------------------------------
 # Delete Content
@@ -244,6 +250,7 @@ async def update_file_at_lines(filepath: str = Body(...), updates: List[UpdateLi
 ################################################
 
 def validate_path(filepath: str) -> Path:
+    expanded_path = os.path.expanduser(filepath)
     file_path = Path(filepath)
     if not file_path.is_absolute():
         raise HTTPException(status_code=400, detail="Only absolute file paths are allowed.")
