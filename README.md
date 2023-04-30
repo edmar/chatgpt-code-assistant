@@ -45,7 +45,7 @@ Here is a demo of the plugin in action:
 
 ## Auto-refresh Setup
 
-This section provides instructions for setting up your text editor to automatically refresh when a file is updated by the Plugin. You can either use the provided scripts in the repository or follow the manual configuration steps for your platform and editor.
+This section provides instructions for setting up your text editor to automatically refresh when a file is updated by the Plugin. You can either use the provided scripts, or follow the manual configuration steps for your platform and editor.
 
 ### Quick Setup Scripts
 
@@ -53,18 +53,18 @@ Run the appropriate script for your platform and editor:
 
 ##### Neovim and Vim
 
-- Linux and macOS: `./setup_nvim_vim.sh`
-- Windows: `setup_nvim_vim.bat`
+- Linux and macOS: `./scripts/setup_auto_refresh/unix/setup_nvim_vim.sh`
+- Windows: `./scripts/windows/setup_auto_refresh/setup_nvim_vim.bat`
 
 ##### Emacs
 
-- Linux and macOS: `./setup_emacs.sh`
-- Windows: `setup_emacs.bat`
+- Linux and macOS: `./scripts/setup_auto_refresh/unix/setup_emacs.sh`
+- Windows: `./scripts/setup_auto_refresh/windows/setup_emacs.bat`
 
 #### Visual Studio Code
 
-- Linux and macOS: `./setup_vscode.sh`
-- Windows: `setup_vscode.bat`
+- Linux and macOS: `./scripts/setup_auto_refresh/setup_vscode.sh`
+- Windows: `./scripts/setup_auto_refresh/setup_vscode.bat`
 
 These scripts will automatically configure your text editor for auto-refresh functionality when the ChatGPT Plugin "Code Assistant" updates a file.
 
