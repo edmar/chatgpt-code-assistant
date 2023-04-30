@@ -66,6 +66,11 @@ async def get_file_content(filepath: str):
 
 @app.get("/url")
 async def get_url_content(url: str):
+    """
+    Retrieve the content of a specified URL.
+    The function takes the URL as input and returns the rendered HTML content of the page.
+    Optionally, the extracted article content can also be returned.
+    """
     # Create an AsyncHTML Session
     session = AsyncHTMLSession()
 
@@ -109,12 +114,15 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating file: {e}")
 
+# -------------------------------------------
+# Delete Content
+# -------------------------------------------
+
+
 
 # -------------------------------------------
 # Update Content
 # -------------------------------------------
-
-# TODO Add dedicated 'delete' endpoint
 
 class ActionType(Enum):
     INSERT = "insert"
@@ -163,7 +171,8 @@ async def update_file(
     filepath: str = Body(...),
     updates: List[UpdateMatch] = Body(...),
     use_fuzzy_match: bool = Body(True)
-): """
+):
+    """
     Update a file's content based on a specified pattern and action.
     Fuzzy match or exact match.
     Returns a status message indicating success or failure.
@@ -207,6 +216,12 @@ async def update_file(
 
 @app.post("/update-file-at-lines")
 async def update_file_at_lines(filepath: str = Body(...), updates: List[UpdateLine] = Body(...)):
+    """
+    Update a file's content at specified line numbers based on the provided updates.
+    Each update specifies the line number, new content, and action (insert, modify, or delete).
+    This method should only be used when specifically indicated, as line numbers may change
+    due to file modifications.
+    """
     try:
         file_path = validate_path(filepath)
 
