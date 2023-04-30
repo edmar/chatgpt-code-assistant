@@ -1,0 +1,40 @@
+{
+  "common": [
+    ".DS_Store",
+    ".git",
+    ".gitignore",
+    ".gitattributes",
+    ".vscode"
+  ],
+  "python": [
+    "__pycache__",
+    "*.pyc",
+    "*.pyo",
+    "*.egg-info",
+    "dist",
+    "build"
+  ],
+  "javascript": [
+    "node_modules",
+    "npm-debug.log",
+    "yarn-error.log",
+    "package-lock.json",
+    "yarn.lock"
+  ],
+  "java": [
+    "*.class",
+    "*.log",
+    "*.jar",
+    "*.war",
+    "*.ear",
+    "target"
+  ],
+  "ruby": [
+    "*.gem",
+    ".bundle",
+    "Gemfile.lock",
+    "log",
+    "tmp"
+  ]
+}
+

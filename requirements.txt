@@ -4,3 +4,6 @@ trafilatura
 requests-html
 pydantic
 fuzzywuzzy
+openai
+python-dotenv==0.19.1
+chat-completion-utils
