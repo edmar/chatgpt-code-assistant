@@ -13,10 +13,11 @@ from fuzzywuzzy import fuzz
 from dotenv import load_dotenv
 import os
 import subprocess
-
-
 import openai
 from chat_completion_utils import llm
+import ast
+
+
 
 load_dotenv()
 
@@ -24,7 +25,7 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 
-
+################################################
 # CONFIG
 ################################################
 
@@ -54,6 +55,146 @@ app.add_middleware(
 async def hello_world():
     return "hello, and welcome to chatgpt Code Assistant plugin"
 
+
+
+# ===========================================
+# Projects
+# ===========================================
+
+PROJECTS_FILE = "projects.json"
+
+# -> Load saved project directory info
+if os.path.exists(PROJECTS_FILE):
+    with open(PROJECTS_FILE, "r") as file:
+        projects = json.load(file)
+else:
+    projects = {}
+    with open(PROJECTS_FILE, "w") as file:
+        json.dump(projects, file)
+
+current_project = None
+
+def save_projects():
+    with open(PROJECTS_FILE, "w") as file:
+        json.dump(projects, file)
+
+# Project Navigation
+# -------------------------------------------
+@app.post("/add-project/{project_name}")
+def add_project(project_name: str):
+    if project_name not in projects:
+        projects[project_name] = {"root": None, "cwd": None}
+        save_projects()
+    else:
+        raise HTTPException(status_code=400, detail="Project already exists.")
+
+@app.get("/list-projects")
+def list_projects():
+    return projects
+
+@app.delete("/remove-project/{project_name}")
+def remove_project(project_name: str):
+    if project_name in projects:
+        del projects[project_name]
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+@app.post("/select-project/{project_name}")
+def select_project(project_name: str):
+    global current_project
+    if project_name in projects:
+        current_project = project_name
+        projects[current_project]["cwd"] = projects[current_project]["root"]
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+@app.get("/current-project")
+def get_current_project():
+    if current_project:
+        return {current_project: projects[current_project]}
+    else:
+        raise HTTPException(status_code=404, detail="No project selected.")
+
+@app.post("/set-project-root/{project_name}")
+def set_project_root(project_name: str, filepath: str):
+    if project_name in projects:
+        projects[project_name]["root"] = filepath
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+@app.post("/set-cwd/{project_name}")
+def set_cwd(project_name: str, filepath: str):
+    if project_name in projects:
+        projects[project_name]["cwd"] = filepath
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+
+# Content Outlines
+# -------------------------------------------
+
+def get_file_structure(filepath=None, root=None):
+    if filepath is None:
+        if current_project and projects[current_project]["cwd"]:
+            filepath = projects[current_project]["cwd"]
+        else:
+            raise HTTPException(status_code=400, detail="No project or path specified.")
+    if root is None:
+        root = filepath
+    if os.path.isdir(filepath):
+        subdirs = [get_file_structure(os.path.join(filepath, subdir), root) for subdir in os.listdir(filepath)]
+        return {"type": "dir", "name": os.path.relpath(filepath, root), "children": subdirs}
+    else:
+        return {"type": "file", "name": os.path.relpath(filepath, root)}
+
+
+def parse_source_code(file_path):
+    with open(file_path, "r") as file:
+        source_code = file.read()
+
+    tree = ast.parse(source_code)
+    imports, classes, functions = [], [], []
+
+    for node in tree.body:
+        if isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
+            imports.append(ast.dump(node).replace('\n', ''))
+        elif isinstance(node, ast.ClassDef):
+            classes.append(node.name)
+            methods = []
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef):
+                    methods.append(item.name)
+            functions.append({"class": node.name, "methods": methods})
+        else:
+            if isinstance(node, ast.FunctionDef):
+                functions.append({"function": node.name})
+
+    return {"imports": imports, "classes": classes, "functions": functions}
+
+
+@app.get("/project-outline")
+def get_project_outline():
+    if current_project and projects[current_project]["root"]:
+        project_root = projects[current_project]["root"]
+    else:
+        raise HTTPException(status_code=400, detail="No project selected or project root not set.")
+
+    file_structure = get_file_structure(project_root)
+    stack = [file_structure]
+
+    while stack:
+        node = stack.pop()
+        if node["type"] == "file" and node["name"].endswith(".py"):
+            file_path = os.path.join(project_root, node["name"])
+            node["outline"] = parse_source_code(file_path)
+        else:
+            stack.extend(node["children"])
+
+    return file_structure
 
 
 # ===========================================
@@ -104,8 +245,10 @@ async def get_url_content(url: str):
 
 
 # ===========================================
-# Create
+# Create + Delete
 # ===========================================
+
+# TODO Add ability to create/delete sections, functions, files, directories, ...
 
 # Routes
 # -------------------------------------------
@@ -128,10 +271,6 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating file: {e}")
 
-
-# ===========================================
-# Delete
-# ===========================================
 
 
 # ===========================================
