@@ -1,4 +1,6 @@
-from typing import List
+from typing import List, Dict, Tuple
+import json
+from enum import Enum
 from fastapi import FastAPI, Request, HTTPException, Body
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.openapi.utils import get_openapi
@@ -6,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import trafilatura
 from pathlib import Path
 from requests_html import AsyncHTMLSession
-from pydantic import BaseModel
-import json
+from pydantic import BaseModel, Field
+from fuzzywuzzy import fuzz
+import os
 
 
 # CONFIG
@@ -24,11 +27,11 @@ origins = [
     "https://openai.com",
 ]
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=['*'],
 )
 
 ################################################
@@ -41,8 +44,34 @@ async def hello_world():
     return "hello, and welcome to chatgpt Code Assistant plugin"
 
 
+# -------------------------------------------
+# Retrieve
+# -------------------------------------------
+
+@app.get("/file")
+async def get_file_content(filepath: str):
+    """
+    Retrieve the content of a specified file.
+    The function takes the file path as input and returns the content of the file.
+    """
+
+    try:
+        file_path = validate_path(filepath)
+        with file_path.open("r") as file:
+            content = file.read()
+        return {"content": content}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading file: {e}")
+
+
 @app.get("/url")
 async def get_url_content(url: str):
+    """
+    Retrieve the content of a specified URL.
+    The function takes the URL as input and returns the rendered HTML content of the page.
+    Optionally, the extracted article content can also be returned.
+    """
     # Create an AsyncHTML Session
     session = AsyncHTMLSession()
 
@@ -64,19 +93,16 @@ async def get_url_content(url: str):
     return JSONResponse(content=article, status_code=200)
 
 
-@app.get("/file")
-async def get_file_content(filepath: str):
-    try:
-        file_path = validate_path(filepath)
-        with file_path.open("r") as file:
-            content = file.read()
-        return {"content": content}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading file: {e}")
-
+# -------------------------------------------
+# Create
+# -------------------------------------------
 
 @app.post("/create-file")
 async def create_file(filepath: str = Body(...), content: str = Body(...)):
+    """
+    Create a new file with the specified content.
+    Returns a status message indicating success or failure.
+    """
     try:
         file_path = Path(filepath)
         if not file_path.is_absolute():
@@ -92,48 +118,124 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
         raise HTTPException(status_code=500, detail=f"Error creating file: {e}")
 
 
-class Update(BaseModel):
+# -------------------------------------------
+# Delete Content
+# -------------------------------------------
+
+
+
+# -------------------------------------------
+# Update Content
+# -------------------------------------------
+
+class ActionType(Enum):
+    INSERT = "insert"
+    MODIFY = "modify"
+    DELETE = "delete"
+
+action_descriptions = {
+    ActionType.INSERT: "Add new content below the matched line.",
+    ActionType.MODIFY: "Update the content of the matched line.",
+    ActionType.DELETE: "Remove the matched line.",
+}
+
+class UpdateMatch(BaseModel):
+    content_to_match: str
+    new_content: str
+    action: ActionType = Field(
+        ...,
+        description="Action to perform on the matched content. Options: "
+        + ", ".join([f"{item.name} - {action_descriptions[item]}" for item in ActionType])
+    )
+
+class UpdateLine(BaseModel):
     line_number: int
     new_content: str
+    action: ActionType
 
+def apply_updates(lines: List[str], updates: List[Tuple[int, ActionType, str]]) -> List[str]:
+    line_offset = 0
+    for line_number, action, new_content in updates:
+        adjusted_line_number = line_number + line_offset
+        if 0 <= adjusted_line_number < len(lines):
+            if action == ActionType.INSERT:
+                new_lines = new_content.splitlines()
+                lines[adjusted_line_number + 1:adjusted_line_number + 1] = [new_line + "\n" for new_line in new_lines]
+                line_offset += len(new_lines)
+            elif action == ActionType.MODIFY:
+                lines[adjusted_line_number] = new_content + "\n"
+            elif action == ActionType.DELETE:
+                del lines[adjusted_line_number]
+                line_offset -= 1
+    return lines
 
 @app.post("/update-file")
-async def update_file(filepath: str = Body(...), updates: List[Update] = Body(...)):
+async def update_file(
+    filepath: str = Body(...),
+    updates: List[UpdateMatch] = Body(...),
+    use_fuzzy_match: bool = Body(True)
+):
     """
-    Use this end piont to update the content of a file. Language expressing adding, deleting,
-    updating, editing, inserting, modifying, or doing these or other expressions of such actions,
-    at specific locations in the file may be used.
+    Update a file's content based on a specified pattern and action.
+    Fuzzy match or exact match.
+    Returns a status message indicating success or failure.
+    """
+
+    try:
+        file_path = validate_path(filepath)
+
+        with file_path.open("r") as file:
+            lines = file.readlines()
+
+        update_list = []
+        for update in updates:
+            if use_fuzzy_match:
+                # Use fuzzy matching to find the best matching line
+                best_match_score = 0
+                best_match_index = None
+                for i, line in enumerate(lines):
+                    score = fuzz.ratio(update.content_to_match, line)
+                    if score > best_match_score:
+                        best_match_score = score
+                        best_match_index = i
+                matched_line_numbers = [best_match_index]
+            else:
+                # Use exact match
+                matched_line_numbers = [i for i, line in enumerate(lines) if update.content_to_match in line]
+
+            matched_line_numbers.sort(reverse=True)
+            for line_number in matched_line_numbers:
+                update_list.append((line_number, update.action, update.new_content))
+
+        updated_lines = apply_updates(lines, update_list)
+
+        with file_path.open("w") as file:
+            file.writelines(updated_lines)
+
+        return {"status": "success", "message": "File updated successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating file: {e}")
+
+
+@app.post("/update-file-at-lines")
+async def update_file_at_lines(filepath: str = Body(...), updates: List[UpdateLine] = Body(...)):
+    """
+    Update a file's content at specified line numbers based on the provided updates.
+    Each update specifies the line number, new content, and action (insert, modify, or delete).
+    This method should only be used when specifically indicated, as line numbers may change
+    due to file modifications.
     """
     try:
         file_path = validate_path(filepath)
 
-        # Read the existing content
         with file_path.open("r") as file:
             lines = file.readlines()
 
-        # Sort updates by line_number in ascending order
-        sorted_updates = sorted(updates, key=lambda x: x.line_number)
+        sorted_updates = sorted([(u.line_number, u.action, u.new_content) for u in updates], key=lambda x: x[0])
+        updated_lines = apply_updates(lines, sorted_updates)
 
-        # Apply updates
-        line_offset = 0
-        for update in sorted_updates:
-            line_number = update.line_number
-            new_content = update.new_content
-            if line_number is not None and new_content is not None:
-                adjusted_line_number = line_number + line_offset
-                if 0 <= adjusted_line_number < len(lines):
-                    # Split new content into lines
-                    new_lines = new_content.splitlines()
-                    # Insert new lines at the specified line number
-                    lines[adjusted_line_number: adjusted_line_number + 1] = [
-                        new_line + "\n" for new_line in new_lines
-                    ]
-                    # Update line_offset
-                    line_offset += len(new_lines) - 1
-
-        # Write the updated content back to the file
         with file_path.open("w") as file:
-            file.writelines(lines)
+            file.writelines(updated_lines)
 
         return {"status": "success", "message": "File updated successfully."}
     except Exception as e:
@@ -146,6 +248,7 @@ async def update_file(filepath: str = Body(...), updates: List[Update] = Body(..
 
 
 def validate_path(filepath: str) -> Path:
+    expanded_path = os.path.expanduser(filepath)
     file_path = Path(filepath)
     if not file_path.is_absolute():
         raise HTTPException(
