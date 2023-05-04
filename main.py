@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 import json
 from enum import Enum
 from fastapi import FastAPI, Request, HTTPException, Body
@@ -10,9 +10,21 @@ from pathlib import Path
 from requests_html import AsyncHTMLSession
 from pydantic import BaseModel, Field
 from fuzzywuzzy import fuzz
+from dotenv import load_dotenv
 import os
+import subprocess
+import openai
+from chat_completion_utils import llm
+import ast
 
 
+load_dotenv()
+
+# -> We'll use openai for generating git commit messages and such
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+
+################################################
 # CONFIG
 ################################################
 
@@ -44,8 +56,152 @@ async def hello_world():
     return "hello, and welcome to chatgpt Code Assistant plugin"
 
 
+
+# ===========================================
+# Projects
+# ===========================================
+
+PROJECTS_FILE = "projects.json"
+
+# -> Load saved project directory info
+if os.path.exists(PROJECTS_FILE):
+    with open(PROJECTS_FILE, "r") as file:
+        projects = json.load(file)
+else:
+    projects = {}
+    with open(PROJECTS_FILE, "w") as file:
+        json.dump(projects, file)
+
+current_project = None
+
+def save_projects():
+    with open(PROJECTS_FILE, "w") as file:
+        json.dump(projects, file)
+
+# Project Navigation
 # -------------------------------------------
+@app.post("/add-project/{project_name}")
+def add_project(project_name: str):
+    if project_name not in projects:
+        projects[project_name] = {"root": None, "cwd": None}
+        save_projects()
+    else:
+        raise HTTPException(status_code=400, detail="Project already exists.")
+
+@app.get("/list-projects")
+def list_projects():
+    return projects
+
+@app.delete("/remove-project/{project_name}")
+def remove_project(project_name: str):
+    if project_name in projects:
+        del projects[project_name]
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+@app.post("/select-project/{project_name}")
+def select_project(project_name: str):
+    global current_project
+    if project_name in projects:
+        current_project = project_name
+        projects[current_project]["cwd"] = projects[current_project]["root"]
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+@app.get("/current-project")
+def get_current_project():
+    if current_project:
+        return {current_project: projects[current_project]}
+    else:
+        raise HTTPException(status_code=404, detail="No project selected.")
+
+@app.post("/set-project-root/{project_name}")
+def set_project_root(project_name: str, filepath: str):
+    if project_name in projects:
+        projects[project_name]["root"] = filepath
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+@app.post("/set-cwd/{project_name}")
+def set_cwd(project_name: str, filepath: str):
+    if project_name in projects:
+        projects[project_name]["cwd"] = filepath
+        save_projects()
+    else:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+
+# Content Outlines
+# -------------------------------------------
+
+def get_file_structure(filepath=None, root=None):
+    if filepath is None:
+        if current_project and projects[current_project]["cwd"]:
+            filepath = projects[current_project]["cwd"]
+        else:
+            raise HTTPException(status_code=400, detail="No project or path specified.")
+    if root is None:
+        root = filepath
+    if os.path.isdir(filepath):
+        subdirs = [get_file_structure(os.path.join(filepath, subdir), root) for subdir in os.listdir(filepath)]
+        return {"type": "dir", "name": os.path.relpath(filepath, root), "children": subdirs}
+    else:
+        return {"type": "file", "name": os.path.relpath(filepath, root)}
+
+
+def parse_source_code(file_path):
+    with open(file_path, "r") as file:
+        source_code = file.read()
+
+    tree = ast.parse(source_code)
+    imports, classes, functions = [], [], []
+
+    for node in tree.body:
+        if isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
+            imports.append(ast.dump(node).replace('\n', ''))
+        elif isinstance(node, ast.ClassDef):
+            classes.append(node.name)
+            methods = []
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef):
+                    methods.append(item.name)
+            functions.append({"class": node.name, "methods": methods})
+        else:
+            if isinstance(node, ast.FunctionDef):
+                functions.append({"function": node.name})
+
+    return {"imports": imports, "classes": classes, "functions": functions}
+
+
+@app.get("/project-outline")
+def get_project_outline():
+    if current_project and projects[current_project]["root"]:
+        project_root = projects[current_project]["root"]
+    else:
+        raise HTTPException(status_code=400, detail="No project selected or project root not set.")
+
+    file_structure = get_file_structure(project_root)
+    stack = [file_structure]
+
+    while stack:
+        node = stack.pop()
+        if node["type"] == "file" and node["name"].endswith(".py"):
+            file_path = os.path.join(project_root, node["name"])
+            node["outline"] = parse_source_code(file_path)
+        else:
+            stack.extend(node["children"])
+
+    return file_structure
+
+
+# ===========================================
 # Retrieve
+# ===========================================
+
+# Routes
 # -------------------------------------------
 
 @app.get("/file")
@@ -72,29 +228,29 @@ async def get_url_content(url: str):
     The function takes the URL as input and returns the rendered HTML content of the page.
     Optionally, the extracted article content can also be returned.
     """
-    # Create an AsyncHTML Session
     session = AsyncHTMLSession()
-
-    # Send a GET request to the URL
     response = await session.get(url)
 
     # Render the JavaScript on the page
     await response.html.arender()
 
-    # Extract the HTML content after rendering
     html_content = response.html.html
 
     # Extract the article using trafilatura (optional)
     article = trafilatura.extract(html_content)
 
-    # Close the session
     await session.close()
 
     return JSONResponse(content=article, status_code=200)
 
 
-# -------------------------------------------
-# Create
+# ===========================================
+# Create + Delete
+# ===========================================
+
+# TODO Add ability to create/delete sections, functions, files, directories, ...
+
+# Routes
 # -------------------------------------------
 
 @app.post("/create-file")
@@ -118,14 +274,195 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
         raise HTTPException(status_code=500, detail=f"Error creating file: {e}")
 
 
-# -------------------------------------------
-# Delete Content
+
+# ===========================================
+# Git
+# ===========================================
+
+# TODO Extract to dedicated file
+
+# Utils
 # -------------------------------------------
 
+def generate_commit_message(diff: str) -> str:
+    system_instruction = "Generate a brief Git commit message based on the following diff. Do not include introductory text or explain what you have done. Only output the commit message you generate."
+    user_input = diff
+    message = llm(system_instruction=system_instruction, user_input=user_input)
+    return message.strip()
 
 
+def git_commit(commit_message: Optional[str] = None) -> None:
+    try:
+        subprocess.run(["git", "add", "-A"])
+        if not commit_message:
+            diff = subprocess.check_output(["git", "diff", "--staged"]).decode("utf-8")
+            commit_message = generate_commit_message(diff)
+
+        subprocess.run(["git", "commit", "-m", commit_message])
+        return {"status": "success", "message": "Git commit created successfully."}
+    except Exception as e:
+        return {"status": "error", "message": f"Error creating git commit: {e}"}
+
+
+def git_reset_to_previous(num_commits: int = 1):
+    try:
+        subprocess.run(["git", "reset", "--hard", f"HEAD~{num_commits}"])
+        return {"status": "success", "message": f"Reset to {num_commits} commit(s) before successfully."}
+    except Exception as e:
+        return {"status": "error", "message": f"Error resetting to previous commit: {e}"}
+
+
+def git_list_branches() -> Dict[str, List[str]]:
+    try:
+        output = subprocess.check_output(["git", "branch"]).decode("utf-8").strip()
+        branches = [b.strip() for b in output.split("\n")]
+        return {"status": "success", "branches": branches}
+    except Exception as e:
+        return {"status": "error", "message": f"Error getting the branch list: {e}"}
+
+
+def git_create_branch(branch_name: str) -> Dict[str, str]:
+    try:
+        subprocess.run(["git", "checkout", "-b", branch_name])
+        return {"status": "success", "message": f"Branch '{branch_name}' created and switched to."}
+    except Exception as e:
+        return {"status": "error", "message": f"Error creating branch '{branch_name}': {e}"}
+
+
+def git_delete_branch(branch_name: str) -> Dict[str, str]:
+    try:
+        subprocess.run(["git", "branch", "-D", branch_name])
+        return {"status": "success", "message": f"Branch '{branch_name}' deleted."}
+    except Exception as e:
+        return {"status": "error", "message": f"Error deleting branch '{branch_name}': {e}"}
+
+
+def git_switch_branch(branch_name: str) -> Dict[str, str]:
+    try:
+        subprocess.run(["git", "checkout", branch_name])
+        return {"status": "success", "message": f"Switched to branch '{branch_name}'."}
+    except Exception as e:
+        return {"status": "error", "message": f"Error switching to branch '{branch_name}': {e}"}
+
+def git_current_branch() -> Dict[str, str]:
+    try:
+        branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode("utf-8").strip()
+        return {"status": "success", "branch": branch}
+    except Exception as e:
+        return {"status": "error", "message": f"Error getting the current branch: {e}"}
+
+
+def git_check_uncommitted_changes() -> Dict[str, str]:
+    try:
+        output = subprocess.check_output(["git", "status", "--porcelain"]).decode("utf-8").strip()
+        changes = output.split('\n') if output else []
+        return {"status": "success", "changes": changes}
+    except Exception as e:
+        return {"status": "error", "message": f"Error checking for uncommitted changes: {e}"}
+
+
+# Routes
 # -------------------------------------------
-# Update Content
+
+@app.post("/create-git-commit")
+async def create_git_commit(commit_message: str = Body(..., embed=True)):
+    """
+    Create a git commit with the given commit message.
+    """
+    result = git_commit(commit_message=commit_message)
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+@app.post("/rollback-update")
+async def rollback_update(num_commits: int = 1):
+    """
+    Rollback a specified number of changes made by 'update_file'
+    """
+    result = git_reset_to_previous(num_commits=num_commits)
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+
+@app.post("/create-git-branch")
+async def create_git_branch(branch_name: str = Body(..., embed=True)):
+    """
+    Create a new git branch and switch to it.
+    """
+    result = git_create_branch(branch_name=branch_name)
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+
+@app.delete("/delete-git-branch")
+async def delete_git_branch(branch_name: str = Body(..., embed=True)):
+    """
+    Delete the specified git branch.
+    """
+    result = git_delete_branch(branch_name=branch_name)
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+
+@app.post("/switch-git-branch")
+async def switch_git_branch(branch_name: str = Body(..., embed=True)):
+    """
+    Switch to the specified git branch.
+    """
+    result = git_switch_branch(branch_name=branch_name)
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+@app.get("/list-git-branches")
+async def list_git_branches():
+    """
+    Get a list of all git branches.
+    """
+    result = git_list_branches()
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+
+@app.get("/current-git-branch")
+async def current_git_branch():
+    """
+    Get the current git branch.
+    """
+    result = git_current_branch()
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+
+@app.get("/uncommitted-git-changes")
+async def uncommitted_git_changes():
+    """
+    Check for uncommitted git changes.
+    """
+    result = git_check_uncommitted_changes()
+    if result["status"] == "success":
+        return result
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])
+
+
+# ===========================================
+# Update 
+# ===========================================
+
+# Utils
 # -------------------------------------------
 
 class ActionType(Enum):
@@ -169,13 +506,15 @@ def apply_updates(lines: List[str], updates: List[Tuple[int, ActionType, str]]) 
                 line_offset -= 1
     return lines
 
+# Routes
+# -------------------------------------------
 @app.post("/update-file")
 async def update_file(
     filepath: str = Body(...),
     updates: List[UpdateMatch] = Body(...),
     use_fuzzy_match: bool = Body(True)
 ):
-    """
+    """ 
     Update a file's content based on a specified pattern and action.
     Fuzzy match or exact match.
     Returns a status message indicating success or failure.
@@ -206,6 +545,8 @@ async def update_file(
             matched_line_numbers.sort(reverse=True)
             for line_number in matched_line_numbers:
                 update_list.append((line_number, update.action, update.new_content))
+
+        git_commit() # Make a git commit before modifying the file content
 
         updated_lines = apply_updates(lines, update_list)
 
