@@ -13,12 +13,11 @@ from fuzzywuzzy import fuzz
 import os
 
 
-
 # CONFIG
 ################################################
 
 app = FastAPI()
-LOCALHOST_PORT=5002
+LOCALHOST_PORT = 8000
 
 # Add CORS for openapi domains to enable localhost plugin serving
 origins = [
@@ -38,6 +37,7 @@ app.add_middleware(
 ################################################
 # ROUTES
 ################################################
+
 
 @app.get("/hello")
 async def hello_world():
@@ -106,18 +106,16 @@ async def create_file(filepath: str = Body(...), content: str = Body(...)):
     try:
         file_path = Path(filepath)
         if not file_path.is_absolute():
-            raise HTTPException(status_code=400, detail="Only absolute file paths are allowed.")
-        
+            raise HTTPException(
+                status_code=400, detail="Only absolute file paths are allowed."
+            )
+
         # Create the file and write the content to it
         with file_path.open("w") as file:
             file.write(content)
         return {"status": "success", "message": "File created successfully."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating file: {e}")
-
-
-
-
 
 
 # -------------------------------------------
@@ -170,7 +168,6 @@ def apply_updates(lines: List[str], updates: List[Tuple[int, ActionType, str]]) 
                 del lines[adjusted_line_number]
                 line_offset -= 1
     return lines
-
 
 @app.post("/update-file")
 async def update_file(
@@ -249,11 +246,14 @@ async def update_file_at_lines(filepath: str = Body(...), updates: List[UpdateLi
 # UTILS
 ################################################
 
+
 def validate_path(filepath: str) -> Path:
     expanded_path = os.path.expanduser(filepath)
     file_path = Path(filepath)
     if not file_path.is_absolute():
-        raise HTTPException(status_code=400, detail="Only absolute file paths are allowed.")
+        raise HTTPException(
+            status_code=400, detail="Only absolute file paths are allowed."
+        )
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
     if not file_path.is_file():
@@ -264,6 +264,7 @@ def validate_path(filepath: str) -> Path:
 ################################################
 # BOILERPLATE
 ################################################
+
 
 # Regenerate OpenAPI YAML when this file changes
 def generate_openapi_spec():
@@ -291,16 +292,17 @@ async def plugin_manifest(request: Request):
         text = f.read().replace("PLUGIN_HOSTNAME", f"https://{host}")
     return JSONResponse(content=json.loads(text))
 
+
 @app.get("/openapi.json")
 async def openapi_spec(request: Request):
-    host = request.headers['host']
+    host = request.headers["host"]
     with open("openapi.json") as f:
         text = f.read().replace("PLUGIN_HOSTNAME", f"https://{host}")
     return JSONResponse(content=text, media_type="text/json")
 
 
-
 if __name__ == "__main__":
     import uvicorn
+
     app.openapi = generate_openapi_spec
     uvicorn.run("main:app", host="0.0.0.0", port=LOCALHOST_PORT, reload=True)

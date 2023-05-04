@@ -18,6 +18,7 @@ Through this personal experiment, I have experienced the enhanced capabilities o
 ```bash
 pip install -r requirements.txt
 ```
+
 ## Usage
 
 Run the following command to start the server:
@@ -25,12 +26,14 @@ Run the following command to start the server:
 ```bash
 uvicorn main:app --reload
 ```
+
 Now, use ngrok to expose the server to the internet.
 Ngrok is needed because the chatgpt plugins requires an https url to work.
 
 ```bash
 ngrok http 8000
 ```
+
 ![ngrok](ngrok.png)
 
 Use the ngrok url to set the server url in the plugin settings.
